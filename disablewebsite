@@ -14,10 +14,11 @@ read -p "Which one do you want to disable [1-$I]?: " SELECTION
 I=$((I+1))
 
 if [[ "$SELECTION" -gt "0" && "$SELECTION" -lt "$I" ]]; then
-  I=1
+  I=1 
   for X in `ls /etc/apache2/sites-enabled/`; do
     if [ "$I" -eq "$SELECTION" ]; then
       rm -vf /etc/apache2/sites-enabled/$X
+      systemctl restart apache2
     fi
     I=$((I+1))
   done
