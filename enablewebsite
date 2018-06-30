@@ -1,0 +1,25 @@
+#!/bin/bash
+
+I=1
+
+for X in `ls /etc/apache2/sites-available/`; do
+  printf "%d) %s\n" $I $X;
+  I=$((I+1))
+done
+
+I=$((I-1))
+
+read -p "Which one do you want to enable [1-$I]?: " SELECTION
+
+I=$((I+1))
+
+if [[ "$SELECTION" -gt "0" && "$SELECTION" -lt "$I" ]]; then
+  I=1 
+  for X in `ls /etc/apache2/sites-available/`; do
+    if [ "$I" -eq "$SELECTION" ]; then
+      ln -s /etc/apache2/sites-available/$X /etc/apache2/sites-enabled/$X	    
+      systemctl restart apache2
+    fi
+    I=$((I+1))
+  done
+fi
