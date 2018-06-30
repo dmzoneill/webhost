@@ -1,0 +1,99 @@
+#!/bin/bash 
+
+USERNAME=""
+PASSWORD=""
+PASSWORD_CONFIRM=""
+DOMAIN_NAME=""
+VALID_DOMAIN=0
+
+echo "Domain, website, user and database setup"
+
+while [ ${#USERNAME} -lt 5 ]; do
+    read -p 'Username: ' USERNAME
+done
+
+while [ $VALID_DOMAIN -eq 0 ]; do
+    read -p "Domain name: " DOMAIN_NAME
+
+    host $DOMAIN_NAME 2>&1 > /dev/null
+    if [ $? -eq 0 ]; then
+        VALID_DOMAIN=1
+    fi
+done
+
+while ! echo "$PASSWORD" | grep -P '(?=^.{8,255}$)(?=^[^\s]*$)(?=.*\d)(?=.*[A-Z])(?=.*[a-z])'
+do
+    read -sp "Please enter a complex password: " PASSWORD
+done
+
+read -sp 'Confirm Password: ' PASSWORD_CONFIRM
+
+if [ "$PASSWORD" != "$PASSWORD_CONFIRM" ]; then
+    echo "Password didn't match"
+    exit
+fi
+
+# each user will have website
+useradd -m $USERNAME -p $PASSWORD
+
+if [ $? -ne 0 ]; then
+    echo "Failed to add user, quitting"
+    exit
+fi
+
+mkdir -vp /home/$USERNAME/www/
+chown -Rv $USERNAME:$USERNAME /home/$USERNAME/www/.
+
+echo "Creating /etc/apache2/sites-available/001-$DOMAIN_NAME.conf"
+cat <<EOT >> /etc/apache2/sites-available/001-$DOMAIN_NAME.conf
+<VirtualHost *:80>
+    ServerName $DOMAIN_NAME
+    ServerAlias *.$DOMAIN_NAME 
+ 
+    ServerAdmin webmaster@$DOMAIN_NAME
+    DocumentRoot /home/$USERNAME/www/
+ 
+    ErrorLog ${APACHE_LOG_DIR}/error.log
+    CustomLog ${APACHE_LOG_DIR}/access.log combined
+ 
+    <Directory />
+      Options Indexes FollowSymLinks Includes ExecCGI
+      AllowOverride All
+      Require all granted
+      Allow from all
+    </Directory>
+
+    <IfModule mpm_itk_module>
+        # AssignUserId user group
+        AssignUserId $USERNAME $USERNAME
+    </IfModule>
+ 
+</VirtualHost>
+EOT
+
+ln -v -s /etc/apache2/sites-available/001-$DOMAIN_NAME.conf /etc/apache2/sites-enabled/001-$DOMAIN_NAME.conf
+
+systemctl restart apache2
+
+echo "Creating mysql username and database"
+cat <<EOT >> /tmp/$DOMAIN_NAME.sql
+create database $USERNAME;
+create user '$USERNAME'@'localhost' identified by '$PASSWORD';
+grant all privileges on $USERNAME.* to '$USERNAME'@'localhost';
+flush privileges;
+EOT
+ 
+mysql -u root < /tmp/$DOMAIN_NAME.sql
+
+echo "Installing wordpress into /home/$USERNAME/www/"
+wget https://wordpress.org/latest.tar.gz -O /tmp/latest.tar.gz
+tar xzf /tmp/latest.tar.gz -C /tmp/
+mv /tmp/wordpress*/* /home/$USERNAME/www/
+
+find /home/$USERNAME/www/ -type d -exec chmod 775 {} \;
+find /home/$USERNAME/www/ -type f -exec chmod 664 {} \;
+
+chown -R $USERNAME:$USERNAME /home/$USERNAME/
+
+echo "Cleaning up"
+rm -rvf /tmp/*
