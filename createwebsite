@@ -125,9 +125,6 @@ chown -R opendkim:opendkim /etc/dkimkeys/
 
 systemctl restart opendkim
 
-echo "Running letsencrypt using the following command"
-echo letsencrypt certonly -d $DOMAIN_NAME -d www.$DOMAIN_NAME -d mail.$DOMAIN_NAME --webroot
-
 echo "Update your dns now to include DNS records for DKIM/DMARC"
 
 echo "Cleaning up"
