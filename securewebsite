@@ -1,0 +1,100 @@
+#!/bin/bash 
+
+res=1
+
+function getcert {
+   echo letsencrypt certonly -d $1 -d www.$1 --webroot --webroot-path /home/$2/www
+   letsencrypt certonly -d $1 -d www.$1 --webroot --webroot-path /home/$2/www
+   res=$?
+}
+
+function updateConf {
+
+cat <<EOT >> $1
+<VirtualHost *:80>
+
+  ServerName www.$2
+  ServerAlias $2
+  DocumentRoot /home/$3/www/
+  LogLevel debug
+  ErrorLog ${APACHE_LOG_DIR}/error.log
+  CustomLog ${APACHE_LOG_DIR}/access.log combined
+
+  RewriteEngine On
+  RewriteRule ^(.*)$ https://%{HTTP_HOST}\$1 [R=301,L]
+
+  <IfModule mpm_itk_module>
+    AssignUserId $3 $3
+  </IfModule>
+
+  <Directory />
+    Options FollowSymLinks Includes ExecCGI
+    AllowOverride All
+    Require all granted
+  </Directory>
+
+</VirtualHost>
+
+<VirtualHost *:443>
+
+  ServerName www.$2
+  ServerAlias $2
+  DocumentRoot /home/$3/www
+  LogLevel debug
+  ErrorLog ${APACHE_LOG_DIR}/error.log
+  CustomLog ${APACHE_LOG_DIR}/access.log combined
+  
+  SSLEngine on
+  SSLCertificateFile /etc/letsencrypt/live/$2/cert.pem
+  SSLCertificateKeyFile /etc/letsencrypt/live/$2/privkey.pem
+  SSLCertificateChainFile /etc/letsencrypt/live/$2/fullchain.pem
+
+  RewriteEngine On
+
+  <IfModule mpm_itk_module>
+    AssignUserId $3 $3
+  </IfModule>
+
+  <Directory />
+    Options +FollowSymLinks +Includes +ExecCGI +Indexes
+    AllowOverride All
+    Require all granted
+  </Directory>
+
+</VirtualHost>
+EOT
+
+  systemctl restart apache2
+}
+
+USERNAME=""
+DOMAIN_NAME=""
+VALID_DOMAIN=0
+
+echo "Secure Domain Reconfigure"
+
+unset options i
+while IFS= read -r -d $'\0' f; do
+  options[i++]="$f"
+done < <(find /etc/apache2/sites-enabled/ -maxdepth 1 -type l -name "*.conf" -print0 )
+
+select opt in "${options[@]}" "Quit"; do
+  case $opt in
+    *.conf)
+      echo "Conf file $opt selected"
+      DOMAIN_NAME=$(cat $opt | grep ServerName | awk '{print $2}')
+      USERNAME=$(cat $opt | grep "^\s\+AssignUserId" | awk '{print $3}')
+      getcert $DOMAIN_NAME $USERNAME
+      if [[ $res == 0 ]]; then
+        updateConf $opt $DOMAIN_NAME $USERNAME
+      fi
+      exit
+      ;;
+    "Quit")
+      exit
+      ;;
+    *)
+      echo "try again.."
+      ;;
+  esac
+done
