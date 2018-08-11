@@ -89,11 +89,47 @@ echo "Installing wordpress into /home/$USERNAME/www/"
 wget https://wordpress.org/latest.tar.gz -O /tmp/latest.tar.gz
 tar xzf /tmp/latest.tar.gz -C /tmp/
 mv /tmp/wordpress*/* /home/$USERNAME/www/
+mkdir /home/$USERNAME/www/wp-content/TEMP
 
 find /home/$USERNAME/www/ -type d -exec chmod 775 {} \;
 find /home/$USERNAME/www/ -type f -exec chmod 664 {} \;
 
 chown -R $USERNAME:$USERNAME /home/$USERNAME/
 
+cat <<EOT >> /usr/share/roundcube/config/$DOMAIN_NAME.inc.php 
+<?php
+
+\$config['default_host'] = 'localhost';
+\$config['username_domain'] = '$DOMAIN_NAME';
+EOT
+chown -R www-data:www-data /usr/share/roundcube/config/$DOMAIN_NAME.inc.php
+
+echo "$DOMAIN_NAME" >> /etc/postfix/vhosts
+echo "$DOMAIN_NAME OK" >> /etc/postfix/recipient_domains
+echo "$USERNAME:   $USERNAME" >> /etc/postfix/aliases
+
+postalias
+newaliases
+postmap /etc/postfix/recipient_domains
+postmap /etc/postfix/vhosts
+
+sed "s/^mydestination = .*//"
+sed -i "/^mydestination/ s/$/ $DOMAIN_NAME mail.$DOMAINNAME/" /etc/postfix/main.cf
+
+systemctl restart postfix
+
+echo "$DOMAIN_NAME" >> /etc/dkimkeys/TrustedHosts
+echo "*.$DOMAIN_NAME" >> /etc/dkimkeys/TrustedHosts
+echo "*@$DOMAIN_NAME default._dkim.$DOMAIN_NAME" >> /etc/dkimkeys/SigningTable
+echo "default._dkim.$DOMAIN_NAME $DOMAIN_NAME:default:/etc/dkimkeys/keys/default.private" >> /etc/dkimkeys/KeyTable
+chown -R opendkim:opendkim /etc/dkimkeys/
+
+systemctl restart opendkim
+
+echo "Running letsencrypt using the following command"
+echo letsencrypt certonly -d $DOMAIN_NAME -d www.$DOMAIN_NAME -d mail.$DOMAIN_NAME --webroot
+
+echo "Update your dns now to include DNS records for DKIM/DMARC"
+
 echo "Cleaning up"
-rm -rvf /tmp/*
+rm -rf /tmp/*
