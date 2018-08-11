@@ -113,7 +113,6 @@ newaliases
 postmap /etc/postfix/recipient_domains
 postmap /etc/postfix/vhosts
 
-sed "s/^mydestination = .*//"
 sed -i "/^mydestination/ s/$/ $DOMAIN_NAME mail.$DOMAINNAME/" /etc/postfix/main.cf
 
 systemctl restart postfix
