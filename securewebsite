@@ -10,7 +10,7 @@ function getcert {
 
 function updateConf {
 
-cat <<EOT >> $1
+cat <<EOT > $1
 <VirtualHost *:80>
 
   ServerName www.$2
